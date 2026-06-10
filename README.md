@@ -2,14 +2,14 @@
 
 # Gao's Word Skill
 
-> Read, modify, output — Word documents, directly transformed.
+> Unpack, edit, repack — Word documents, precisely transformed at the XML level.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Agent Skill](https://img.shields.io/badge/Agent-Skill-7c3aed)]()
 [![skills.sh](https://img.shields.io/badge/skills.sh-Compatible-blue)](https://skills.sh)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)]()
 
-**A Word document modification skill.** Uses Anthropic's official `docx` skill to read, modify, and regenerate `.docx` files directly — no markdown roundtrip. Edit content, colors, images, structure in one pass. Output always lands in `./gao-word-output/` — never touches the original.
+**A Word document modification skill.** Built on Anthropic's official `docx` skill's **unpack → edit OOXML → pack** pipeline. Modifies `.docx` at the XML level for full formatting fidelity — change colors, replace text, insert images, remove sections. Output always lands in `./gao-word-output/` — never touches the original.
 
 </div>
 
@@ -91,13 +91,13 @@ Gao-word-skill/
 
 ## Design Philosophy
 
-### Direct Workflow
+### Unpack → Edit OOXML → Pack
 
 ```
-.docx  ──[Anthropic docx skill]──▶  read & modify in place  ──[docx skill]──▶  .docx
+.docx  ──[unpack.py]──▶  XML  ──[Edit tool]──▶  XML  ──[pack.py]──▶  .docx
 ```
 
-No markdown intermediary. The `docx` skill reads the OOXML, applies your edits directly to the document model, and writes the result. Full formatting fidelity, no conversion loss.
+The docx skill unpacks the `.docx` into editable XML files, you modify `document.xml` directly (colors, text, images, structure), then repack back to `.docx`. Full OOXML fidelity — every paragraph, run, and style property is preserved and precisely editable.
 
 ### Never Overwrite Originals
 
