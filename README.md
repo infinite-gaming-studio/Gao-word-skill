@@ -49,13 +49,22 @@ After installation, restart your AI assistant — the skill auto-loads when trig
 
 ### Prerequisites
 
-This skill **requires** [Anthropic's official `docx` skill](https://github.com/anthropics/skills) to read and write Word documents. If not already installed, you'll be guided to install it on first use:
+This skill **requires** [Anthropic's official `docx` skill](https://github.com/anthropics/skills) (part of the [anthropics/skills](https://github.com/anthropics/skills) collection) to read and write Word documents. If not already installed, you'll be guided to install it on first use:
 
 ```bash
 npx skills add anthropics/skills
 ```
 
-The `docx` skill provides native OOXML manipulation — no markdown conversion, no format loss.
+**Anthropic Document Skills on GitHub:** https://github.com/anthropics/skills
+
+| Skill | Purpose |
+|-------|---------|
+| `docx` | Word document read/write |
+| `pdf`  | PDF read/write |
+| `pptx` | PowerPoint read/write |
+| `xlsx` | Excel read/write |
+
+The `docx` skill provides native OOXML manipulation (unpack → edit XML → pack) — no markdown conversion, no format loss.
 
 ### Reference-only mode
 

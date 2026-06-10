@@ -11,7 +11,16 @@ A direct Word document modification workflow built on top of [Anthropic's offici
 
 ## Required Dependency
 
-This skill **requires** [Anthropic's official `docx` skill](https://github.com/anthropics/skills). It must be installed and loaded before any document processing.
+This skill **requires** Anthropic's official `docx` skill (part of the [anthropics/skills](https://github.com/anthropics/skills) collection). It must be installed and loaded before any document processing.
+
+**Anthropic Document Skills (GitHub):** https://github.com/anthropics/skills
+
+| Skill | Purpose | Repo Path |
+|-------|---------|-----------|
+| `docx` | Word document read/write | `anthropics/skills` → `skills/docx/` |
+| `pdf`  | PDF read/write | `anthropics/skills` → `skills/pdf/` |
+| `pptx` | PowerPoint read/write | `anthropics/skills` → `skills/pptx/` |
+| `xlsx` | Excel read/write | `anthropics/skills` → `skills/xlsx/` |
 
 ---
 
@@ -30,6 +39,8 @@ skill("docx")
 > ```bash
 > npx skills add anthropics/skills
 > ```
+>
+> 该技能来自 GitHub: https://github.com/anthropics/skills
 >
 > 安装完成后，请重新发送你的 Word 文件。
 
