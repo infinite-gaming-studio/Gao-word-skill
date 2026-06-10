@@ -1,216 +1,225 @@
 ---
 name: Gao-word-skill
-description: Use when the user wants to modify a Word document (.docx) — edit content, change formatting (title/heading colors with hex values), replace text, insert images, remove sections (like table of contents), or restructure the document. Triggered by sharing a .docx file path with modification requests, or mentioning "修改word文档", "处理docx", "word文档编辑", "docx转markdown再转word". The workflow: load Anthropic's docx skill → convert to markdown → edit per user's instructions → convert back to .docx → output to ~/gao-word-output/.
+description: Use when the user wants to modify a Word document (.docx) — edit content, change formatting (title/heading colors with hex values), replace text, insert images, remove sections (like table of contents), or restructure the document. Triggered by sharing a .docx file path with modification requests, or mentioning "修改word文档", "处理docx", "word文档编辑", "word修改". Requires Anthropic's official docx skill — guides user to install it if missing. Outputs to ./gao-word-output/.
 ---
 
 # Gao Word Skill
 
 ## Overview
 
-A three-phase workflow for modifying Word documents: convert `.docx` to markdown, apply user's edits freely on the text, then convert back to `.docx` with styling intact. Outputs to `~/gao-word-output/`.
+A direct Word document modification workflow. Loads Anthropic's official `docx` skill to read, modify, and regenerate `.docx` files — no intermediate format, no markdown roundtrip. Output goes to `./gao-word-output/`, original is never touched.
 
-## Phase 1: Convert DOCX → Markdown
+## Required Dependency
 
-### Step 1.1: Check Prerequisites
+This skill **requires** [Anthropic's official `docx` skill](https://github.com/anthropics/skills) to read and write Word documents. It must be installed before any document processing can occur.
 
-Attempt to load Anthropic's official `docx` skill:
+---
+
+## Phase 1: Prerequisites & Setup
+
+### Step 1.1: Load the docx Skill
+
+The first action is always to load the Anthropic `docx` skill:
 
 ```
 skill("docx")
 ```
 
-If the skill loads successfully → proceed to Step 1.2.
+### Step 1.2: If Not Found → Install
 
-If the skill is **not found**, guide the user to install it:
+If the `docx` skill does not exist, **stop** and guide the user:
 
-> 需要先安装 Anthropic 官方的文档处理技能才能处理 Word 文件。请运行以下命令安装：
+> 这个技能依赖 Anthropic 官方的文档处理能力，需要先安装 `docx` 技能。请运行：
 >
 > ```bash
 > npx skills add anthropics/skills
 > ```
 >
-> 或者单独安装 docx 技能：
->
-> ```bash
-> npx skills add anthropics/docx
-> ```
->
 > 安装完成后，请重新发送你的 Word 文件。
 
-**Fallback**: If the user cannot or doesn't want to install the Anthropic skill, you may fall back to using `pandoc` for basic conversion:
+Do **NOT** proceed without it. Do not offer pandoc fallbacks — the docx skill provides the only reliable path for reading AND writing with full formatting fidelity.
+
+### Step 1.3: Create Output Directory
 
 ```bash
-pandoc --track-changes=all "input.docx" -t markdown -o "/tmp/docx-convert.md"
+mkdir -p ./gao-word-output
 ```
 
-However, warn the user that pandoc may lose some complex formatting (nested tables, text boxes, etc.).
+---
 
-### Step 1.2: Convert the Document
+## Phase 2: Read & Understand
 
-With the `docx` skill loaded, read the user's `.docx` file. The skill will handle converting it to markdown text in the conversation context.
+### Step 2.1: Read the Document
 
-Save the raw markdown to a temp working file:
+With the `docx` skill loaded, read the user's `.docx` file. The skill will extract and present the document content.
 
-```bash
-mkdir -p ~/gao-word-output
+### Step 2.2: Present a Summary
+
+Show the user a structural summary:
+
+```
+文档结构概览：
+- 标题层级：H1 × 2, H2 × 12, H3 × 36
+- 段落数：~200
+- 表格：3 个
+- 图片：8 张
+- 目录：有
+
+请确认你要做的修改：
+1. ...
+2. ...
 ```
 
-Write the markdown content to `~/gao-word-output/{filename}_原始.md` (the "original" conversion).
+### Step 2.3: Confirm Modifications
 
-### Step 1.3: Present Summary
+If the user hasn't already specified all changes, ask what they want. If they gave a multi-part request with the file, paraphrase it back for confirmation:
 
-After conversion, show the user what was extracted:
+> 确认以下修改：
+> 1. 所有标题颜色 → #275317
+> 2. "题型分组练" → "基础考点特训"
+> ...
 
-1. **Document structure**: headings found, paragraph count, tables, images
-2. **Confirm**: "这份文档已转换为 Markdown。请告诉我你需要做哪些修改？"
+🔴 **CHECKPOINT**: User confirms the intended modifications before any changes are applied.
 
-## Phase 2: Edit the Markdown
+---
 
-Apply the user's requested changes directly on the markdown text.
+## Phase 3: Apply Modifications
 
-### 2.1: Common Edit Categories
+Use the `docx` skill's native capabilities to modify the document directly. The docx skill can manipulate OOXML to edit content, formatting, colors, images, and structure.
 
-| Edit Type | How to Apply |
-|-----------|-------------|
-| **Heading/title color** | Annotate with HTML comments: `<!-- color:#275317 -->标题文字` |
-| **Text replacement** | Direct markdown text substitution |
-| **Image insertion** | Use `![alt](path/to/image.png)` syntax |
-| **Remove TOC / section** | Delete the relevant markdown lines |
-| **Reorder sections** | Move markdown heading blocks |
-| **Add/modify text** | Direct markdown editing |
+### 3.1: Common Modification Patterns
 
-### 2.2: Color Annotation Convention
+| Request | How to Apply (via docx skill) |
+|---------|-------------------------------|
+| **Heading/title color** | Modify the heading paragraph's run properties — set `w:color` to the hex value |
+| **Text replacement** | Search for text strings in the OOXML body and replace them |
+| **Image insertion** | Add an image run before/after the target paragraph |
+| **Remove TOC** | Delete the SDT (structured document tag) block containing the TOC field |
+| **Remove sections** | Delete the relevant paragraphs/body elements |
+| **Reorder sections** | Reorder the body elements |
+| **Change font/size** | Modify run properties (`w:rPr`) on the target text |
 
-When user specifies color changes, use this convention in the intermediate markdown, so Phase 3 knows how to apply the formatting:
+### 3.2: Color Application
 
-```markdown
-<!-- color:#275317 -->## 基础考点特训
-```
+When the user specifies hex colors (e.g. `#275317`):
 
-If the user only wants to change heading colors without modifying text:
-- Wrap each heading with a `<!-- color:#XXXXXX -->` annotation on the same line
-- The converter in Phase 3 will parse these annotations and apply the color to the corresponding OOXML run properties
+1. Find the target text (headings, specific text runs)
+2. Modify the OOXML run properties to set `w:color` with `w:val="275317"`
+3. If the user says "所有标题", apply to all heading paragraphs
 
-### 2.3: Image Insertion
+### 3.3: Image Insertion
 
-If the user provides an image file:
-1. Note the image's absolute path
-2. Insert it in markdown: `![描述](image-path)`
-3. Phase 3 will embed the image in the final `.docx`
+When the user provides an image file path:
 
-If the user provides a URL, download it first:
+1. Verify the file exists
+2. Use the docx skill to embed the image inline before/after the target content
+3. If the user provides a URL, download first:
+   ```bash
+   curl -sL "URL" -o ./gao-word-output/temp-image.png
+   ```
 
-```bash
-curl -sL "URL" -o ~/gao-word-output/temp-image.png
-```
+### 3.4: Iterate
 
-### 2.4: Iterative Editing
-
-After each round of edits:
-1. Show the modified markdown to the user
-2. Ask: "修改后看起来对吗？还需要调整什么？"
+After applying modifications:
+1. Present a preview/summary of what changed
+2. Ask: "修改已完成。还需要调整什么吗？"
 3. Repeat until the user is satisfied
 
-🔴 **CHECKPOINT**: Has the user explicitly confirmed they are satisfied? Do not proceed to Phase 3 without confirmation.
+🔴 **CHECKPOINT**: Has the user explicitly confirmed satisfaction? Do not proceed to Phase 4 without it.
 
-## Phase 3: Convert Markdown → DOCX
+---
 
-### Step 3.1: Prepare the Final Markdown
+## Phase 4: Save Output
 
-Before conversion, ensure all color annotations and image references are properly formatted. Clean up any working notes from the markdown.
+### Step 4.1: Generate the Modified .docx
 
-### Step 3.2: Convert Using the docx Skill
+Use the `docx` skill to write the modified document to disk.
 
-Use the Anthropic `docx` skill to create a new `.docx` document from the edited markdown.
-
-The docx skill should be instructed to:
-- Parse `<!-- color:#XXXXXX -->` annotations and apply them as heading run colors
-- Embed referenced images inline
-- Preserve the heading hierarchy (H1 → Title, H2 → Heading 2, etc.)
-- Apply a clean default styling
-
-**Important**: Tell the docx skill explicitly about the color annotations so it applies them in the OOXML output:
+### Step 4.2: Output Path
 
 ```
-Create a .docx file from this markdown. Parse `<!-- color:#XXXXXX -->Title` annotations — extract the hex color and apply it as the text color (w:color) for that heading's run properties. The annotation itself should NOT appear in the output document.
+./gao-word-output/{original-filename}-修改版.docx
 ```
 
-### Step 3.3: Save Output
-
-The final `.docx` file goes to:
+For multiple rounds, append version number:
 
 ```
-~/gao-word-output/{original-filename}-修改版.docx
+./gao-word-output/{original-filename}-修改版-v2.docx
 ```
 
-If the user makes multiple rounds, append a version number:
+### Step 4.3: Confirm
 
-```
-~/gao-word-output/{original-filename}-修改版-v2.docx
-```
+> 文件已保存到：`./gao-word-output/exam-修改版.docx`
 
-### Step 3.4: Confirm Output
-
-Tell the user the exact path:
-
-> 文件已保存到：`~/gao-word-output/{name}-修改版.docx`
+---
 
 ## Quick Reference
 
-| Phase | Key Action | Verification |
-|-------|-----------|-------------|
-| **1. Convert** | Load docx skill, convert to markdown, save `_原始.md` | Can you see the full document structure in markdown? |
-| **2. Edit** | Apply user's changes iteratively | Has the user confirmed they're satisfied? |
-| **3. Output** | Convert back to .docx, save to `~/gao-word-output/` | Does the output file open correctly? |
+| Phase | Key Action | Check |
+|-------|-----------|-------|
+| **1. Setup** | Load docx skill, create output dir | Is docx skill available? |
+| **2. Read** | Read document, present structure, confirm changes | Did user confirm the plan? |
+| **3. Modify** | Apply edits via docx skill, iterate | Did user say they're satisfied? |
+| **4. Save** | Write .docx to ./gao-word-output/ | Output file opens correctly? |
+
+---
 
 ## Error Handling
 
 | Problem | Action |
 |---------|--------|
-| docx skill not found | Guide to install `npx skills add anthropics/skills` |
-| Large file (>50 pages) | Warn user, process in sections |
-| Complex formatting lost | Note what couldn't be preserved (text boxes, embedded charts), suggest manual adjustment |
-| Image file not found | Ask user to provide correct path |
-| pandoc not installed | Guide: `brew install pandoc` (macOS) / `apt install pandoc` (Linux) |
-| User provides .doc (not .docx) | Ask them to save as .docx format first |
+| **docx skill not found** | Stop. Guide: `npx skills add anthropics/skills` |
+| **Large file (>50 pages)** | Warn user, process in stages |
+| **Complex formatting (text boxes, charts)** | Note what can't be modified, suggest manual adjustment |
+| **Image file not found** | Ask user to provide correct path |
+| **User provides .doc (legacy format)** | Ask them to open in Word and save as .docx first |
+| **Output dir not writable** | Use /tmp/ fallback, warn user |
+
+---
 
 ## Example Workflow
 
-**User**: "这是我的试卷文档 /path/to/exam.docx，请把：
+**User**: "这是我的试卷 /path/to/exam.docx，请把：
 1. 标题颜色改成 #275317
-2. '题型分组练' 改为 '基础考点特训'，'创新拓展练' 改为 '思维进阶跃升'，'新题速递' 改为 '前沿名校模考'，颜色都改成 #275317
-3. 在每个新标题前插入仙人掌图标 cactus.png
+2. '题型分组练' → '基础考点特训'，'创新拓展练' → '思维进阶跃升'，'新题速递' → '前沿名校模考'，颜色 #275317
+3. 在每个新标题前插入仙人掌插图 cactus.png
 4. 去掉目录"
 
 **AI follows the skill**:
 
-1. Load `docx` skill → convert exam.docx → show structure
-2. Edit markdown:
-   - Add `<!-- color:#275317 -->` before each heading
-   - Replace text strings
-   - Insert `![仙人掌](cactus.png)` before the three headings
-   - Delete the TOC section lines
-3. Show edited markdown → user confirms
-4. Convert to .docx → save to `~/gao-word-output/exam-修改版.docx`
-5. Tell user: "文件已保存到 ~/gao-word-output/exam-修改版.docx"
+1. Load `docx` skill → check available
+2. Create `./gao-word-output/`
+3. Read exam.docx → present structure summary → confirm 4 modifications
+4. Apply changes via docx skill:
+   - Search for all heading paragraphs → set `w:color="275317"`
+   - Search body text for "题型分组练" → replace with "基础考点特训" + set color
+   - Same for the other two terms
+   - Insert image runs before each of the three target headings
+   - Find and delete the TOC SDT block
+5. Show change summary → user confirms "没问题"
+6. Save → `./gao-word-output/exam-修改版.docx`
+7. "文件已保存到 ./gao-word-output/exam-修改版.docx"
+
+---
 
 ## Anti-Patterns
 
 | ❌ Don't | ✅ Do Instead |
 |----------|-------------|
-| Skip checking for docx skill | Always check prerequisites first |
-| Apply edits without showing the user | Show edits and get confirmation before Phase 3 |
-| Assume color format | Always use `#RRGGBB` hex format |
-| Overwrite the original file | Save to `~/gao-word-output/` directory |
-| Proceed to output without user OK | 🔴 CHECKPOINT: require explicit confirmation |
-| Forget to create output directory | `mkdir -p ~/gao-word-output` at the start |
-| Apply formatting to non-heading text without user request | Only apply colors where user explicitly requests |
+| Skip checking for docx skill | Always verify prerequisites first |
+| Convert to markdown as an intermediate step | Use docx skill directly |
+| Overwrite the original file | Always output to `./gao-word-output/` |
+| Apply changes without user confirmation | Paraphrase and confirm before modifying |
+| Proceed to save without user satisfaction | 🔴 CHECKPOINT: require explicit "ok" |
+| Offer pandoc/markdown fallback for formatting edits | docx skill is the only reliable path |
+
+---
 
 ## Principles
 
-- **Convert first, edit later** — always start with a clean markdown conversion
-- **Show every change** — the user sees intermediate results before final output
-- **Never overwrite originals** — output always goes to `~/gao-word-output/`
-- **Iterate until satisfied** — no limit on editing rounds in Phase 2
-- **Color annotations are the bridge** — the `<!-- color:#XXX -->` convention carries formatting intent through the markdown intermediary
-- **Fail gracefully** — if a tool is missing, guide the user to install it; never block
+- **Direct manipulation** — use the docx skill natively; no markdown roundtrip
+- **docx skill is mandatory** — stop and guide if not installed; no workarounds
+- **Never overwrite originals** — output always goes to `./gao-word-output/`
+- **Confirm before acting** — paraphrase all changes, get explicit approval
+- **Iterate until satisfied** — unlimited revision rounds in Phase 3
+- **Fail gracefully** — missing dependencies → clear install instructions, never block silently
